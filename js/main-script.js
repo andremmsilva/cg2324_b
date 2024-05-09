@@ -12,10 +12,10 @@ let cameras = [];
 let selectedCamera = 0,
   previousCamera = -1;
 let scene, renderer;
-let geometry, material, mesh;
 let wireframe = false;
 
-let craneHook, craneCart, craneTop, crane, container;
+const objects = {};
+const materials = {};
 
 let dimensions = {
   lanca: [24, 2, 2],
@@ -32,25 +32,24 @@ let dimensions = {
 /////////////////////
 /* CREATE SCENE(S) */
 /////////////////////
-
 function createScene() {
   "use strict";
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color("skyblue");
 
-  scene.add(new THREE.AxesHelper(10));
+  // scene.add(new THREE.AxesHelper(10));
 
   createContainer(13, 0, 0);
   createCrane(0, 0, 0);
   createCraneTop(0, 19, 0);
   createCart(13, 0, 0);
   createHook(0, -5, 0);
-  scene.add(crane);
-  scene.add(container);
-  crane.add(craneTop);
-  craneTop.add(craneCart);
-  craneCart.add(craneHook);
+  scene.add(objects.crane);
+  scene.add(objects.container);
+  objects.crane.add(objects.craneTop);
+  objects.craneTop.add(objects.craneCart);
+  objects.craneCart.add(objects.craneHook);
 }
 
 //////////////////////
@@ -131,39 +130,58 @@ function createCamera() {
 ////////////////////////
 /* CREATE OBJECT3D(S) */
 ////////////////////////
-function createBoxGeometry(obj, key, x, y, z) {
+function createBoxMesh(key, material, x, y, z) {
   "use strict";
-  geometry = new THREE.BoxGeometry(...dimensions[key]);
-  mesh = new THREE.Mesh(geometry, material);
-  mesh.position.set(x, y, z);
-  obj.add(mesh);
 
+  const geometry = new THREE.BoxGeometry(...dimensions[key]);
+  let mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(x, y, z);
   return mesh;
+}
+
+/* Loads (cargas) */
+function randomNumberSign() {
+  return Math.random() < 0.5 ? -1 : 1;
+}
+
+function createLoads() {
+  "use strict";
+
+  
 }
 
 /* Crane */
 function createCrane(x, y, z) {
   "use strict";
 
-  crane = new THREE.Object3D();
+  const crane = new THREE.Object3D();
+  let material = new THREE.MeshBasicMaterial({
+    color: 0xfdda0d,
+    wireframe: false,
+  });
 
-  material = new THREE.MeshBasicMaterial({ color: 0xfdda0d, wireframe: false });
-
-  createBoxGeometry(crane, "base", 0, 1.5, 0);
-  createBoxGeometry(crane, "torre", 0, 11, 0);
+  crane.add(createBoxMesh("base", material, 0, 1.5, 0));
+  crane.add(createBoxMesh("torre", material, 0, 11, 0));
 
   crane.position.x = x;
   crane.position.y = y;
   crane.position.z = z;
+
+  objects["crane"] = crane;
+  materials["crane"] = material;
 }
 
 /* Container */
 function createContainer(x, y, z) {
   "use strict";
 
-  container = new THREE.Object3D();
+  const container = new THREE.Object3D();
+  let material = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    wireframe: false,
+  });
 
-  material = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: false });
+  materials["containerFloor"] = material;
 
   const getWallX = (i) => {
     if (i === 0) return 2;
@@ -177,29 +195,40 @@ function createContainer(x, y, z) {
     return -2;
   };
 
-  createBoxGeometry(container, "containerChao", 0, 0.25, 0);
+  container.add(createBoxMesh("containerChao", material, 0, 0.25, 0));
+
   material = new THREE.MeshBasicMaterial({ color: 0x964b00, wireframe: false });
+
   let wall;
   for (let i = 0; i < 4; i++) {
-    wall = createBoxGeometry(container, "containerWall", getWallX(i), 1.75, getWallZ(i));
+    wall = createBoxMesh(
+      "containerWall",
+      material,
+      getWallX(i),
+      1.75,
+      getWallZ(i)
+    );
     wall.rotation.y += (Math.PI / 2) * (i + 1);
+    container.add(wall);
   }
 
-  container.add(mesh);
   container.position.set(x, y, z);
+  objects["container"] = container;
+  materials["containerWalls"] = material;
 }
 
 /* Crane top */
-function addPortaLanca(obj, x, y, z) {
+function createPortaLanca(material, x, y, z) {
   "use strict";
-  geometry = new THREE.CylinderGeometry(0, 1, 4, 4);
-  mesh = new THREE.Mesh(geometry, material);
+  const geometry = new THREE.CylinderGeometry(0, 1, 4, 4);
+  const mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(x, y, z);
   mesh.rotation.y += -Math.PI / 2;
-  obj.add(mesh);
+
+  return mesh;
 }
 
-function addTirante(obj, point1, point2) {
+function createTirante(point1, point2) {
   "use strict";
   // Calculate the length of the tirante
   let tiranteLen = Math.sqrt(
@@ -211,6 +240,7 @@ function addTirante(obj, point1, point2) {
   // Create the geometry of the cylinder
   let geometry = new THREE.CylinderGeometry(0.1, 0.1, tiranteLen, 32);
   let material = new THREE.MeshBasicMaterial({ color: 0xcccccc });
+  materials["tirante"] = material;
   let mesh = new THREE.Mesh(geometry, material);
 
   // Calculate the midpoint for initial positioning
@@ -236,63 +266,75 @@ function addTirante(obj, point1, point2) {
   mesh.position.copy(middlePoint);
   mesh.quaternion.copy(quaternion);
 
-  // Add the mesh to the object
-  obj.add(mesh);
+  return mesh;
 }
 
 function createCraneTop(x, y, z) {
   "use strict";
 
-  craneTop = new THREE.Object3D();
+  const craneTop = new THREE.Object3D();
   craneTop.userData = { rotating: false, direction: 1 };
 
-  material = new THREE.MeshBasicMaterial({ color: 0xfddadd, wireframe: false });
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xfddadd,
+    wireframe: false,
+  });
 
-  createBoxGeometry(craneTop, "lanca", 5, 1, 0);
-  createBoxGeometry(craneTop, "contrapeso", -4.5, -1, 0);
-  createBoxGeometry(craneTop, "cabine", 1.5, -0.5, 0);
-  addPortaLanca(craneTop, 0, 4, 0);
-  addTirante(craneTop, [0, 6, 0], [17, 2, 0]);
-  addTirante(craneTop, [0, 6, 0], [-7, 2, 0]);
+  craneTop.add(createBoxMesh("lanca", material, 5, 1, 0));
+  craneTop.add(createBoxMesh("contrapeso", material, -4.5, -1, 0));
+  craneTop.add(createBoxMesh("cabine", material, 1.5, -0.5, 0));
+  craneTop.add(createPortaLanca(material, 0, 4, 0));
+  craneTop.add(createTirante([0, 6, 0], [17, 2, 0]));
+  craneTop.add(createTirante([0, 6, 0], [-7, 2, 0]));
 
   craneTop.position.x = x;
   craneTop.position.y = y;
   craneTop.position.z = z;
+
+  objects["craneTop"] = craneTop;
+  materials["craneTop"] = material;
 }
 
 /* Cart */
 function createCart(x, y, z) {
   "use strict";
 
-  craneCart = new THREE.Object3D();
+  const craneCart = new THREE.Object3D();
   craneCart.userData = { moving: false, direction: 1 };
 
-  material = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: false });
+  const material = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: false });
 
-  createBoxGeometry(craneCart, "carrinho", 0, -0.5, 0);
-  addTirante(craneCart, [0, -1, 0], [0, -5, 0]); // Cabo de aço
+  craneCart.add(createBoxMesh("carrinho", material, 0, -0.5, 0));
+  craneCart.add(createTirante([0, -1, 0], [0, -5, 0])); // Cabo de aço
 
   craneCart.position.x = x;
   craneCart.position.y = y;
   craneCart.position.z = z;
+
+  objects["craneCart"] = craneCart;
+  materials["craneCart"] = material;
 }
 
 /* Hook */
-function addClaw(obj, x, y, z) {
+function createClaw(material, x, y, z) {
   "use strict";
-  geometry = new THREE.CylinderGeometry(0.5, 0, 2, 4);
+
+  const geometry = new THREE.CylinderGeometry(0.5, 0, 2, 4);
+
   z > 0 ? geometry.translate(0, -0.5, -0.5) : geometry.translate(0, -0.5, 0.5);
-  mesh = new THREE.Mesh(geometry, material);
+
+  let mesh = new THREE.Mesh(geometry, material);
   z > 0
     ? mesh.position.set(x, y + 0.5, z + 0.5)
     : mesh.position.set(x, y + 0.5, z - 0.5);
-  obj.add(mesh);
+
+  return mesh;
 }
 
 function createHook(x, y, z) {
   "use strict";
 
-  craneHook = new THREE.Object3D();
+  const craneHook = new THREE.Object3D();
   craneHook.userData = {
     moving: false,
     direction: 1,
@@ -300,17 +342,20 @@ function createHook(x, y, z) {
     clawDirection: 1,
   };
 
-  material = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: false });
+  const material = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: false });
 
-  createBoxGeometry(craneHook, "blocoGancho", 0, -0.5, 0);
-  addClaw(craneHook, 0.5, -1.2, 0.5);
-  addClaw(craneHook, 0.5, -1.2, -0.5);
-  addClaw(craneHook, -0.5, -1.2, 0.5);
-  addClaw(craneHook, -0.5, -1.2, -0.5);
+  craneHook.add(createBoxMesh("blocoGancho", material, 0, -0.5, 0));
+  craneHook.add(createClaw(material, 0.5, -1.2, 0.5));
+  craneHook.add(createClaw(material, 0.5, -1.2, -0.5));
+  craneHook.add(createClaw(material, -0.5, -1.2, 0.5));
+  craneHook.add(createClaw(material, -0.5, -1.2, -0.5));
 
   craneHook.position.x = x;
   craneHook.position.y = y;
   craneHook.position.z = z;
+
+  objects["craneHook"] = craneHook;
+  materials["craneHook"] = material;
 }
 
 //////////////////////
@@ -334,23 +379,23 @@ function update() {
   "use strict";
 
   // Crane Top
-  if (craneTop.userData.rotating) {
-    craneTop.rotation.y += (craneTop.userData.direction * Math.PI) / 128;
+  if (objects.craneTop.userData.rotating) {
+    objects.craneTop.rotation.y += (objects.craneTop.userData.direction * Math.PI) / 128;
   }
 
   // Cart
-  if (craneCart.userData.moving) {
-    const nextPosX = craneCart.position.x + craneCart.userData.direction * 0.1;
+  if (objects.craneCart.userData.moving) {
+    const nextPosX = objects.craneCart.position.x + objects.craneCart.userData.direction * 0.1;
     if (nextPosX < 16 && nextPosX > 3) {
-      craneCart.position.x = nextPosX;
+      objects.craneCart.position.x = nextPosX;
     }
   }
 
   // Hook
-  if (craneHook.userData.moving) {
-    const nextPosY = craneHook.position.y + craneHook.userData.direction * 0.1;
-    craneHook.position.y = nextPosY;
-    craneCart.traverse((obj) => {
+  if (objects.craneHook.userData.moving) {
+    const nextPosY = objects.craneHook.position.y + objects.craneHook.userData.direction * 0.1;
+    objects.craneHook.position.y = nextPosY;
+    objects.craneCart.traverse((obj) => {
       if (
         obj instanceof THREE.Mesh &&
         obj.geometry instanceof THREE.CylinderGeometry &&
@@ -363,14 +408,14 @@ function update() {
   }
 
   // Claw
-  if (craneHook.userData.clawRotating) {
-    craneHook.traverse((obj) => {
+  if (objects.craneHook.userData.clawRotating) {
+    objects.craneHook.traverse((obj) => {
       if (
         obj instanceof THREE.Mesh &&
         obj.geometry instanceof THREE.CylinderGeometry
       ) {
         const rotationDir =
-          craneHook.userData.clawDirection * obj.position.z > 0 ? 1 : -1;
+          objects.craneHook.userData.clawDirection * obj.position.z > 0 ? 1 : -1;
         const nextRotX = obj.rotation.x + (rotationDir * Math.PI) / 128;
         if (obj.position.z > 0) {
           if (nextRotX < Math.PI / 12 && nextRotX > -Math.PI / 4)
@@ -385,7 +430,7 @@ function update() {
 
   const perspMobile = cameras[5];
   let hookPos = new THREE.Vector3();
-  craneHook.getWorldPosition(hookPos)
+  objects.craneHook.getWorldPosition(hookPos);
   perspMobile.position.set(hookPos.x, hookPos.y - 1, hookPos.z);
   perspMobile.lookAt(new THREE.Vector3(hookPos.x, 0, hookPos.z));
 
@@ -494,43 +539,43 @@ function onKeyDown(e) {
       break;
     case 81: // Q
     case 113: // q
-      craneTop.userData.rotating = true;
-      craneTop.userData.direction = 1;
+      objects.craneTop.userData.rotating = true;
+      objects.craneTop.userData.direction = 1;
       break;
     case 65: //A
     case 97: //a
-      craneTop.userData.rotating = true;
-      craneTop.userData.direction = -1;
+      objects.craneTop.userData.rotating = true;
+      objects.craneTop.userData.direction = -1;
       break;
     case 83: //S
     case 115: //s
-      craneCart.userData.moving = true;
-      craneCart.userData.direction = 1;
+      objects.craneCart.userData.moving = true;
+      objects.craneCart.userData.direction = 1;
       break;
     case 87: // W
     case 119: // w
-      craneCart.userData.moving = true;
-      craneCart.userData.direction = -1;
+      objects.craneCart.userData.moving = true;
+      objects.craneCart.userData.direction = -1;
       break;
     case 68: // D
     case 100: // d
-      craneHook.userData.moving = true;
-      craneHook.userData.direction = 1;
+      objects.craneHook.userData.moving = true;
+      objects.craneHook.userData.direction = 1;
       break;
     case 69: //E
     case 101: //e
-      craneHook.userData.moving = true;
-      craneHook.userData.direction = -1;
+      objects.craneHook.userData.moving = true;
+      objects.craneHook.userData.direction = -1;
       break;
     case 82: //R
     case 114: //r
-      craneHook.userData.clawRotating = true;
-      craneHook.userData.clawDirection = 1;
+      objects.craneHook.userData.clawRotating = true;
+      objects.craneHook.userData.clawDirection = 1;
       break;
     case 70: //F
     case 102: //f
-      craneHook.userData.clawRotating = true;
-      craneHook.userData.clawDirection = -1;
+      objects.craneHook.userData.clawRotating = true;
+      objects.craneHook.userData.clawDirection = -1;
       break;
   }
 }
@@ -545,35 +590,35 @@ function onKeyUp(e) {
   switch (e.keyCode) {
     case 81: // Q
     case 113: // q
-      craneTop.userData.rotating = false;
+      objects.craneTop.userData.rotating = false;
       break;
     case 65: //A
     case 97: //a
-      craneTop.userData.rotating = false;
+      objects.craneTop.userData.rotating = false;
       break;
     case 83: //S
     case 115: //s
-      craneCart.userData.moving = false;
+      objects.craneCart.userData.moving = false;
       break;
     case 87: // W
     case 119: // w
-      craneCart.userData.moving = false;
+      objects.craneCart.userData.moving = false;
       break;
     case 68: // D
     case 100: // d
-      craneHook.userData.moving = false;
+      objects.craneHook.userData.moving = false;
       break;
     case 69: //E
     case 101: //e
-      craneHook.userData.moving = false;
+      objects.craneHook.userData.moving = false;
       break;
     case 82: //R
     case 114: //r
-      craneHook.userData.clawRotating = false;
+      objects.craneHook.userData.clawRotating = false;
       break;
     case 70: //F
     case 102: //f
-      craneHook.userData.clawRotating = false;
+      objects.craneHook.userData.clawRotating = false;
       break;
   }
 }
