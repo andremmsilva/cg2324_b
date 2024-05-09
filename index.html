@@ -1,19 +1,73 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
-<head>
-    <meta charset="�utf-8" �>
+  <head>
+    <meta charset="utf-8" />
     <title>Trabalho B</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css" />
     <script type="importmap">
-        {
-          "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@v0.163.0/build/three.module.js",
-            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
-          }
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@v0.163.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
         }
+      }
     </script>
-</head>
-<body>
+  </head>
+  <body>
     <script type="module" src="js/main-script.js"></script>
-</body>
+    <div class="camerahud">
+      <p id="hud1">
+        <span class="font-bold">1</span> - Selecionar a câmera 1 (frontal)
+      </p>
+      <p id="hud2">
+        <span class="font-bold">2</span> - Selecionar a câmera 2 (lateral)
+      </p>
+      <p id="hud3">
+        <span class="font-bold">3</span> - Selecionar a câmera 3 (topo)
+      </p>
+      <p id="hud4">
+        <span class="font-bold">4</span> - Selecionar a câmera 4 (fixa ortogonal)
+      </p>
+      <p id="hud5">
+        <span class="font-bold">5</span> - Selecionar a câmera 5 (fixa perspetiva)
+      </p>
+      <p id="hud6">
+        <span class="font-bold">6</span> - Selecionar a câmera 6 (gancho)
+      </p>
+    </div>
+    <div class="hud">
+      <p id="hudq">
+        <span class="font-bold">Q(q)</span> - Controlar rotação da cabine
+        (contra-relógio)
+      </p>
+      <p id="huda">
+        <span class="font-bold">A(a)</span> - Controlar rotação da cabine
+        (sentido do relógio)
+      </p>
+      <p id="hudw">
+        <span class="font-bold">W(w)</span> - Controlar posição do carrinho
+        (frente)
+      </p>
+      <p id="huds">
+        <span class="font-bold">S(s)</span> - Controlar posição do carrinho
+        (para trás)
+      </p>
+      <p id="hude">
+        <span class="font-bold">E(e)</span> - Controlar altura do gancho (para
+        cima)
+      </p>
+      <p id="hudd">
+        <span class="font-bold">D(d)</span> - Controlar altura do gancho (para
+        baixo)
+      </p>
+      <p id="hudr">
+        <span class="font-bold">R(r)</span> - Controlar abertura da garra
+        (abrir)
+      </p>
+      <p id="hudf">
+        <span class="font-bold">F(f)</span> - Controlar abertura da garra
+        (fechar)
+      </p>
+    </div>
+  </body>
 </html>
