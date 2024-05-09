@@ -15,6 +15,7 @@ let selectedCamera = 0,
   previousCamera = -1;
 let scene, renderer;
 let wireframe = false;
+let clock
 
 const objects = {};
 const materials = {};
@@ -464,19 +465,18 @@ function handleCollisions() {
 ////////////
 /* UPDATE */
 ////////////
-function update() {
+function update(delta) {
   "use strict";
 
   // Crane Top
   if (objects.craneTop.userData.rotating) {
-    objects.craneTop.rotation.y +=
-      (objects.craneTop.userData.direction * Math.PI) / 128;
+    objects.craneTop.rotation.y += (objects.craneTop.userData.direction * Math.PI / 60) * delta;
   }
 
   // Cart
   if (objects.craneCart.userData.moving) {
-    const nextPosX =
-      objects.craneCart.position.x + objects.craneCart.userData.direction * 0.1;
+    const moveAmountX = objects.craneCart.userData.direction * 2 * delta;
+    const nextPosX = objects.craneCart.position.x + moveAmountX;
     if (nextPosX < 16 && nextPosX > 3) {
       objects.craneCart.position.x = nextPosX;
     }
@@ -484,15 +484,11 @@ function update() {
 
   // Hook
   if (objects.craneHook.userData.moving) {
-    const nextPosY =
-      objects.craneHook.position.y + objects.craneHook.userData.direction * 0.1;
+    const moveAmountY = objects.craneHook.userData.direction * 2 * delta;
+    const nextPosY = objects.craneHook.position.y + moveAmountY;
     objects.craneHook.position.y = nextPosY;
     objects.craneCart.traverse((obj) => {
-      if (
-        obj instanceof THREE.Mesh &&
-        obj.geometry instanceof THREE.CylinderGeometry &&
-        obj.position.x === 0
-      ) {
+      if (obj instanceof THREE.Mesh && obj.geometry instanceof THREE.CylinderGeometry && obj.position.x === 0) {
         obj.geometry = new THREE.CylinderGeometry(0.1, 0.1, -1 + nextPosY, 32);
         obj.position.y = nextPosY - (-1 + nextPosY) / 2;
       }
@@ -502,48 +498,39 @@ function update() {
   // Claw
   if (objects.craneHook.userData.clawRotating) {
     objects.craneHook.traverse((obj) => {
-      if (
-        obj instanceof THREE.Mesh &&
-        obj.geometry instanceof THREE.CylinderGeometry
-      ) {
-        const rotationDir =
-          objects.craneHook.userData.clawDirection * obj.position.z > 0
-            ? 1
-            : -1;
-        const nextRotX = obj.rotation.x + (rotationDir * Math.PI) / 128;
+      if (obj instanceof THREE.Mesh && obj.geometry instanceof THREE.CylinderGeometry) {
+        const rotationDir = objects.craneHook.userData.clawDirection * (obj.position.z > 0 ? 1 : -1);
+        const rotationAmount = (rotationDir * Math.PI / 60) * delta;
+        const nextRotX = obj.rotation.x + rotationAmount;
         if (obj.position.z > 0) {
           if (nextRotX < Math.PI / 12 && nextRotX > -Math.PI / 4)
-            obj.rotation.x += (rotationDir * Math.PI) / 128;
+            obj.rotation.x = nextRotX;
         } else {
           if (nextRotX < Math.PI / 4 && nextRotX > -Math.PI / 12)
-            obj.rotation.x += (rotationDir * Math.PI) / 128;
+            obj.rotation.x = nextRotX;
         }
       }
     });
   }
 
+  // Update the mobile perspective camera based on the crane hook's position
   const perspMobile = cameras[5];
   let hookPos = new THREE.Vector3();
   objects.craneHook.getWorldPosition(hookPos);
   perspMobile.position.set(hookPos.x, hookPos.y - 1, hookPos.z);
   perspMobile.lookAt(new THREE.Vector3(hookPos.x, 0, hookPos.z));
 
-  // Cameras
+  // Camera
   if (previousCamera === -1) {
     document.getElementById(`hud${1}`).classList.add("active-camera");
     previousCamera = selectedCamera;
   }
 
-  if (
-    selectedCamera !== previousCamera &&
-    document.getElementById(`hud${previousCamera + 1}`) !== null
-  ) {
-    document
-      .getElementById(`hud${previousCamera + 1}`)
-      .classList.remove("active-camera");
-    document
-      .getElementById(`hud${selectedCamera + 1}`)
-      .classList.add("active-camera");
+  if (selectedCamera !== previousCamera) {
+    const prevHudElement = document.getElementById(`hud${previousCamera + 1}`);
+    const selectedHudElement = document.getElementById(`hud${selectedCamera + 1}`);
+    if (prevHudElement) prevHudElement.classList.remove("active-camera");
+    if (selectedHudElement) selectedHudElement.classList.add("active-camera");
     previousCamera = selectedCamera;
   }
 }
@@ -566,12 +553,14 @@ function init() {
   });
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
-
+  
   createScene();
   createCamera();
-
+  
+  clock = new THREE.Clock(); 
+  
   render();
-
+  
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
   window.addEventListener("resize", onResize);
@@ -582,11 +571,12 @@ function init() {
 /////////////////////
 function animate() {
   "use strict";
-
-  update();
-  render();
-
   requestAnimationFrame(animate);
+  
+  const delta = clock.getDelta(); 
+  update(delta); 
+  
+  render(); 
 }
 
 ////////////////////////////
@@ -716,6 +706,7 @@ function onKeyUp(e) {
       break;
   }
 }
+
 
 init();
 animate();
