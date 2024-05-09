@@ -8,6 +8,8 @@ import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 /* GLOBAL VARIABLES */
 //////////////////////
 
+const LOADS = 3;
+
 let cameras = [];
 let selectedCamera = 0,
   previousCamera = -1;
@@ -50,6 +52,28 @@ function createScene() {
   objects.crane.add(objects.craneTop);
   objects.craneTop.add(objects.craneCart);
   objects.craneCart.add(objects.craneHook);
+
+  scene.updateMatrixWorld(true);
+
+  computeSpheres();
+
+  for (let i = 0; i < LOADS; i++) {
+    scene.add(spawnLoad());
+  }
+}
+
+function computeSpheres() {
+  Object.keys(objects).forEach((key) => {
+    const obj = objects[key];
+    if (obj.geometry) {
+      obj.geometry.computeBoundingSphere();
+      let newSphere = obj.geometry.boundingSphere.clone();
+      let worldPosition = new THREE.Vector3();
+      obj.getWorldPosition(worldPosition);
+      newSphere.center.add(worldPosition);
+      obj.userData.sphere = newSphere;
+    }
+  });
 }
 
 //////////////////////
@@ -136,18 +160,77 @@ function createBoxMesh(key, material, x, y, z) {
   const geometry = new THREE.BoxGeometry(...dimensions[key]);
   let mesh = new THREE.Mesh(geometry, material);
   mesh.position.set(x, y, z);
+
+  objects[key] = mesh;
+
   return mesh;
 }
 
 /* Loads (cargas) */
-function randomNumberSign() {
-  return Math.random() < 0.5 ? -1 : 1;
+function getRandomPosition(bounds) {
+  let x = Math.random() * (bounds.max.x - bounds.min.x) + bounds.min.x;
+  let z = Math.random() * (bounds.max.z - bounds.min.z) + bounds.min.z;
+  return new THREE.Vector3(x, 0, z); // Assuming y is constant, adjust if needed
 }
 
-function createLoads() {
-  "use strict";
+function checkCollision(newSphere) {
+  for (let key of Object.keys(objects)) {
+    const obj = objects[key];
+    if (key === "base" || key === "containerChao") {
+      let distance = newSphere.center.distanceTo(obj.userData.sphere.center);
+      if (distance < newSphere.radius + obj.userData.sphere.radius) {
+        return true; // Collision detected
+      }
+    }
+  }
 
-  
+  if(objects.loads) {
+    for (let load of objects.loads) {
+      console.log(load);
+      let distance = newSphere.center.distanceTo(load.userData.sphere.center);
+      if (distance < newSphere.radius + load.userData.sphere.radius) {
+        return true; // Collision detected
+      }
+    }
+  }
+  return false;
+}
+
+function spawnLoad() {
+  let bounds = { min: { x: -15, z: -15 }, max: { x: 15, z: 15 } };
+  let position, newObject, newSphere;
+  const maxAttempts = 100; // Prevents infinite loops
+  let attempts = 0;
+
+  do {
+    position = getRandomPosition(bounds);
+    newObject = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 32, 32), // Sphere geometry, adjust size as needed
+      new THREE.MeshBasicMaterial({ color: 0xff0000 })
+    );
+    newObject.position.copy(position);
+    newObject.position.y += 1;
+
+    // Compute the bounding sphere
+    newObject.geometry.computeBoundingSphere();
+    newSphere = newObject.geometry.boundingSphere.clone();
+    newSphere.center.add(position); // Adjust sphere center to the object's world position
+    newObject.userData.sphere = newSphere;
+
+    if (attempts++ > maxAttempts) {
+      console.error("Failed to place object without collision");
+      return null;
+    }
+  } while (checkCollision(newSphere));
+
+  // No collision, object can be added to the scene
+  if (!objects["loads"]) {
+    objects["loads"] = [newObject];
+  } else {
+    objects["loads"].push(newObject);
+  }
+
+  return newObject;
 }
 
 /* Crane */
@@ -302,7 +385,10 @@ function createCart(x, y, z) {
   const craneCart = new THREE.Object3D();
   craneCart.userData = { moving: false, direction: 1 };
 
-  const material = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: false });
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    wireframe: false,
+  });
 
   craneCart.add(createBoxMesh("carrinho", material, 0, -0.5, 0));
   craneCart.add(createTirante([0, -1, 0], [0, -5, 0])); // Cabo de aço
@@ -342,7 +428,10 @@ function createHook(x, y, z) {
     clawDirection: 1,
   };
 
-  const material = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: false });
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    wireframe: false,
+  });
 
   craneHook.add(createBoxMesh("blocoGancho", material, 0, -0.5, 0));
   craneHook.add(createClaw(material, 0.5, -1.2, 0.5));
@@ -380,12 +469,14 @@ function update() {
 
   // Crane Top
   if (objects.craneTop.userData.rotating) {
-    objects.craneTop.rotation.y += (objects.craneTop.userData.direction * Math.PI) / 128;
+    objects.craneTop.rotation.y +=
+      (objects.craneTop.userData.direction * Math.PI) / 128;
   }
 
   // Cart
   if (objects.craneCart.userData.moving) {
-    const nextPosX = objects.craneCart.position.x + objects.craneCart.userData.direction * 0.1;
+    const nextPosX =
+      objects.craneCart.position.x + objects.craneCart.userData.direction * 0.1;
     if (nextPosX < 16 && nextPosX > 3) {
       objects.craneCart.position.x = nextPosX;
     }
@@ -393,7 +484,8 @@ function update() {
 
   // Hook
   if (objects.craneHook.userData.moving) {
-    const nextPosY = objects.craneHook.position.y + objects.craneHook.userData.direction * 0.1;
+    const nextPosY =
+      objects.craneHook.position.y + objects.craneHook.userData.direction * 0.1;
     objects.craneHook.position.y = nextPosY;
     objects.craneCart.traverse((obj) => {
       if (
@@ -415,7 +507,9 @@ function update() {
         obj.geometry instanceof THREE.CylinderGeometry
       ) {
         const rotationDir =
-          objects.craneHook.userData.clawDirection * obj.position.z > 0 ? 1 : -1;
+          objects.craneHook.userData.clawDirection * obj.position.z > 0
+            ? 1
+            : -1;
         const nextRotX = obj.rotation.x + (rotationDir * Math.PI) / 128;
         if (obj.position.z > 0) {
           if (nextRotX < Math.PI / 12 && nextRotX > -Math.PI / 4)
