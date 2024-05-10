@@ -15,7 +15,8 @@ let selectedCamera = 0,
   previousCamera = -1;
 let scene, renderer;
 let wireframe = false;
-let clock
+let clock;
+let animationInProgress = false;
 
 const objects = {};
 const materials = {};
@@ -174,28 +175,43 @@ function getRandomPosition(bounds) {
   return new THREE.Vector3(x, 0, z); // Assuming y is constant, adjust if needed
 }
 
-function checkCollision(newSphere) {
+function checkSphereCollision(newSphere) {
+  // Check collision with fixed scene objects
   for (let key of Object.keys(objects)) {
-    const obj = objects[key];
     if (key === "base" || key === "containerChao") {
-      let distance = newSphere.center.distanceTo(obj.userData.sphere.center);
-      if (distance < newSphere.radius + obj.userData.sphere.radius) {
+      let distance = newSphere.center.distanceTo(objects[key].userData.sphere.center);
+      if (distance < newSphere.radius + objects[key].userData.sphere.radius) {
         return true; // Collision detected
       }
     }
   }
 
-  if(objects.loads) {
+  // Check collision with dynamically added loads
+  if (objects.loads) {
     for (let load of objects.loads) {
-      console.log(load);
       let distance = newSphere.center.distanceTo(load.userData.sphere.center);
       if (distance < newSphere.radius + load.userData.sphere.radius) {
         return true; // Collision detected
       }
     }
   }
+
   return false;
 }
+function checkHookCollisions(hook) {
+  updateBoundingSpheres(hook);  // Make sure the hook's sphere is updated
+  if (objects.loads) {
+      for (let load of objects.loads) {
+          const loadSphere = load.userData.sphere;
+          if (checkSphereCollision(loadSphere)) {
+              return true;  // Return the colliding load
+          }
+      }
+  }
+  console.log("No collisions detected.");
+  return false;  // Return null if no collisions are found
+}
+
 
 function spawnLoad() {
   let bounds = { min: { x: -15, z: -15 }, max: { x: 15, z: 15 } };
@@ -222,7 +238,7 @@ function spawnLoad() {
       console.error("Failed to place object without collision");
       return null;
     }
-  } while (checkCollision(newSphere));
+  } while (checkSphereCollision(newSphere));
 
   // No collision, object can be added to the scene
   if (!objects["loads"]) {
@@ -232,6 +248,80 @@ function spawnLoad() {
   }
 
   return newObject;
+}
+
+  function updateBoundingSpheres() {
+    [objects.craneHook, ...objects.loads].forEach(obj => {
+        if (obj && obj.geometry) {
+            obj.geometry.computeBoundingSphere();
+            let sphere = obj.geometry.boundingSphere.clone();
+            let worldPosition = new THREE.Vector3();
+            obj.getWorldPosition(worldPosition);
+            sphere.center = worldPosition.add(sphere.center);
+            obj.userData.sphere = sphere;
+        }
+    });
+}
+
+
+function attachLoadToHook(hook, load) {
+  if (hook.children.length === 0) { // Ensure the hook is not already carrying another load
+    hook.add(load);
+    hook.userData.carryingLoad = true;
+    load.position.set(0, -1, 0); // Position the load relative to the hook
+    updateBoundingSpheres(hook);
+    console.log("Load picked up.");
+  }
+}
+
+function isOverDropZone(hook) {
+  const containerBounds = {
+      minX: objects.container.position.x - objects.container.geometry.parameters.width / 2,
+      maxX: objects.container.position.x + objects.container.geometry.parameters.width / 2,
+      minZ: objects.container.position.z - objects.container.geometry.parameters.depth / 2,
+      maxZ: objects.container.position.z + objects.container.geometry.parameters.depth / 2
+  };
+
+  return hook.position.x >= containerBounds.minX && hook.position.x <= containerBounds.maxX &&
+         hook.position.z >= containerBounds.minZ && hook.position.z <= containerBounds.maxZ;
+}
+
+function dropLoadIfPossible(hook) {
+  if (hook.userData.carryingLoad && isOverDropZone(hook)) {
+      let load = hook.children[0];  
+      
+      let dropHeight = calculateDropHeight(load);
+
+      scene.add(load); 
+      load.position.set(hook.position.x, dropHeight, hook.position.z); 
+      dropLoad(hook, load)
+      hook.userData.carryingLoad = false;
+      console.log("Load dropped into the container.");
+  }
+}
+
+function calculateDropHeight(load) {
+  let baseHeight = objects.container.position.y + objects.container.geometry.parameters.height / 2;
+  let highestPoint = baseHeight; 
+
+  objects.loads.forEach(existingLoad => {
+      if (existingLoad.position.x === load.position.x && existingLoad.position.z === load.position.z) {
+          let topOfLoad = existingLoad.position.y + existingLoad.geometry.parameters.height / 2;
+          if (topOfLoad > highestPoint) {
+              highestPoint = topOfLoad;
+          }
+      }
+  });
+
+  return highestPoint + load.geometry.parameters.height / 2; // Position it just above the highest point
+}
+
+function dropLoad(hook, load) {
+  scene.add(load); // Re-add to the scene
+  load.position.copy(hook.position).add(new THREE.Vector3(0, -2, 0)); // Drop below the hook
+  hook.remove(load);
+  hook.userData.carryingLoad = false;
+  console.log("Load dropped.");
 }
 
 /* Crane */
@@ -451,15 +541,23 @@ function createHook(x, y, z) {
 //////////////////////
 /* CHECK COLLISIONS */
 //////////////////////
-function checkCollisions() {
-  "use strict";
+function checkCollision() {
 }
 
 ///////////////////////
 /* HANDLE COLLISIONS */
 ///////////////////////
-function handleCollisions() {
-  "use strict";
+function handleCollision(hook, load) {
+  "use strict"
+  if (checkSphereCollision(hook.userData.sphere)) {
+    animationInProgress = true;  
+    animateLoadToContainer(load, () => {
+      animationInProgress = false; // Re-enable key processing after animation
+    });
+  }
+  console.log("Collision detected between hook and load!");
+  hook.userData.moving = true;
+  attachLoadToHook(hook, load); 
 }
 
 ////////////
@@ -470,7 +568,7 @@ function update(delta) {
 
   // Crane Top
   if (objects.craneTop.userData.rotating) {
-    objects.craneTop.rotation.y += (objects.craneTop.userData.direction * Math.PI / 60) * delta;
+    objects.craneTop.rotation.y += (objects.craneTop.userData.direction * Math.PI / 10) * delta;
   }
 
   // Cart
@@ -486,7 +584,9 @@ function update(delta) {
   if (objects.craneHook.userData.moving) {
     const moveAmountY = objects.craneHook.userData.direction * 2 * delta;
     const nextPosY = objects.craneHook.position.y + moveAmountY;
-    objects.craneHook.position.y = nextPosY;
+    if (nextPosY < objects.craneCart.position.y - 2) { // Prevent hook from going above the cart base
+      objects.craneHook.position.y = nextPosY;
+    }
     objects.craneCart.traverse((obj) => {
       if (obj instanceof THREE.Mesh && obj.geometry instanceof THREE.CylinderGeometry && obj.position.x === 0) {
         obj.geometry = new THREE.CylinderGeometry(0.1, 0.1, -1 + nextPosY, 32);
@@ -512,6 +612,27 @@ function update(delta) {
       }
     });
   }
+
+  // Loads
+  updateBoundingSpheres();  // Update spheres every frame
+
+    // Check for collisions between the hook and each load
+    let loadToAttach = null;
+    objects.loads.forEach(load => {
+        if (checkSphereCollision(load.userData.sphere)) {
+            loadToAttach = load;  // We assume the hook can only carry one load at a time
+        }
+    });
+    console.log(loadToAttach) //DEVIA DAR FALSE INSTAD OF TRUE
+    // Attach load if a collision is detected and the hook is not already carrying a load
+    if (loadToAttach && !objects.craneHook.userData.carryingLoad) {
+        attachLoadToHook(objects.craneHook, loadToAttach);
+    }
+
+    // Check if the hook is over the drop zone and has a load
+    if (objects.craneHook.userData.carryingLoad && isOverDropZone(objects.craneHook)) {
+        dropLoadIfPossible(objects.craneHook);
+    }
 
   // Update the mobile perspective camera based on the crane hook's position
   const perspMobile = cameras[5];
@@ -570,14 +691,13 @@ function init() {
 /* ANIMATION CYCLE */
 /////////////////////
 function animate() {
-  "use strict";
+  "use strict"
+  const delta = clock.getDelta();
+  update(delta);
   requestAnimationFrame(animate);
-  
-  const delta = clock.getDelta(); 
-  update(delta); 
-  
-  render(); 
+  render();
 }
+
 
 ////////////////////////////
 /* RESIZE WINDOW CALLBACK */
@@ -603,6 +723,8 @@ function onKeyDown(e) {
 
   if (document.getElementById(`hud${e.key}`) !== null)
     document.getElementById(`hud${e.key}`).classList.add("active-hud");
+
+  if (animationInProgress) return;
 
   switch (e.keyCode) {
     case 49: // 1
@@ -688,10 +810,10 @@ function onKeyUp(e) {
     case 119: // w
       objects.craneCart.userData.moving = false;
       break;
-    case 68: // D
+    case 68:// D
     case 100: // d
-      objects.craneHook.userData.moving = false;
-      break;
+      objects.craneHook.userData.moving = true;
+        objects.craneHook.userData.direction = 1; 
     case 69: //E
     case 101: //e
       objects.craneHook.userData.moving = false;
@@ -705,7 +827,7 @@ function onKeyUp(e) {
       objects.craneHook.userData.clawRotating = false;
       break;
   }
-}
+} 
 
 
 init();
